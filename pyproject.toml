@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bayesnet_tool"
+version = "0.1.0"
+description = "Bayesian network analysis tool with Streamlit UI"
+authors = [
+    {name = "s345001"}
+]
+
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "networkx",
+    "streamlit",
+    "pgmpy"
+]

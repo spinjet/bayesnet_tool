@@ -1,0 +1,10 @@
+import bayesnet_tool
+import bayesnet_tool.data
+import bayesnet_tool.structure
+import bayesnet_tool.discretisation
+import bayesnet_tool.training
+import bayesnet_tool.plotting
+import bayesnet_tool.utils
+import bayesnet_tool.ui
+import bayesnet_tool.app
+print('imports OK')
