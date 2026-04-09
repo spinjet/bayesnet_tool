@@ -13,6 +13,7 @@ import networkx as nx
 import pandas as pd
 import numpy as np
 
+
 # Imports from package modules will go here once they are implemented
 
 
@@ -181,9 +182,10 @@ def tab_structure():
     if "df" not in st.session_state:
         st.warning("Load data first.")
         st.stop()
+    
 
     if "dsm_selected_vars" not in st.session_state:
-        st.session_state.dsm_selected_vars = list(st.session_state.nodes)
+        st.session_state.dsm_selected_vars = [] #list(st.session_state.nodes)
 
     st.subheader("Save / Load Bayesian Network Structure")
     col1, col2 = st.columns(2)

@@ -4,3 +4,4 @@ matplotlib
 networkx
 streamlit
 pgmpy
+pyro_ppl
