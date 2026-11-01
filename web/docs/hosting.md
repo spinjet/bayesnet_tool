@@ -29,12 +29,12 @@ Deploy the contents of `dist/` under `/bayesnet/`. The browser application compu
 
 ## Headers and caching
 
-Serve `.wasm` as `application/wasm`; `.js` and `.mjs` as JavaScript. The current single-threaded engine does not require cross-origin isolation/SharedArrayBuffer headers. ELK's standalone worker is also same-origin.
+Serve `.wasm` as `application/wasm`; `.js` and `.mjs` as JavaScript. The current single-threaded engine does not require cross-origin isolation/SharedArrayBuffer headers. ELK's standalone worker is also same-origin. Graphviz is bundled in a lazy worker chunk with embedded WASM. PNG rasterisation uses a local Blob image, so img-src must allow blob:.
 
 A suitable starting Content-Security-Policy for the built app is:
 
 ```text
- default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+ default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 ```
 
 Inline styles are used by Vue Flow and probability bars. No JavaScript `unsafe-eval`, external fonts, analytics or remote CDN is required. Review headers against your actual static server and target browsers before public release.

@@ -13,6 +13,8 @@ import {
   type Project,
   type Dataset,
   LIMITS,
+  thresholdCut,
+  type EvidenceValue,
 } from "./domain";
 const resultSchema = z.object({
   prior: z.record(z.string(), z.array(z.number())),
@@ -170,7 +172,13 @@ export const useProject = defineStore("project", () => {
       v.label = project.value.variables[old].label;
       v.position = project.value.variables[old].position;
       project.value.variables[old] = v;
-      delete project.value.evidence[v.id];
+      const previous = project.value.evidence[v.id];
+      if (
+        v.representation === "categorical" ||
+        typeof previous !== "object" ||
+        previous.kind !== "threshold"
+      )
+        delete project.value.evidence[v.id];
     } else {
       project.value.variables.push(v);
       if (!project.value.queryGroups.length)
@@ -238,7 +246,12 @@ export const useProject = defineStore("project", () => {
     );
     touch("query");
   }
-  function addEdge(source: string, target: string) {
+  function addEdge(
+    source: string,
+    target: string,
+    sourceHandle: "left" | "right" | "top" | "bottom" = "right",
+    targetHandle: "left" | "right" | "top" | "bottom" = "left",
+  ) {
     if (source === target) {
       error.value = "A node cannot connect to itself.";
       return;
@@ -256,7 +269,13 @@ export const useProject = defineStore("project", () => {
       !project.value.variables.some((v) => v.id === target)
     )
       return;
-    project.value.edges.push({ id: crypto.randomUUID(), source, target });
+    project.value.edges.push({
+      id: crypto.randomUUID(),
+      source,
+      target,
+      sourceHandle,
+      targetHandle,
+    });
     touch();
   }
   function removeNode(id: string) {
@@ -452,10 +471,88 @@ export const useProject = defineStore("project", () => {
       touch("display");
     }
   }
+  function setEvidence(id: string, value: EvidenceValue | undefined) {
+    if (value === undefined) delete project.value.evidence[id];
+    else project.value.evidence[id] = value;
+    touch("query");
+  }
+  async function addThresholdCut(id: string) {
+    try {
+      const v = project.value.variables.find((v) => v.id === id),
+        e = project.value.evidence[id];
+      if (!v?.binning || typeof e !== "object" || e.kind !== "threshold")
+        return;
+      if (!dataset.value) {
+        error.value =
+          "Reattach the source CSV in Build to add a cut and retrain.";
+        return;
+      }
+      if (
+        !confirm(
+          "Add this exact cut? This changes the variable states and invalidates dependent CPTs. Retrain before inference.",
+        )
+      )
+        return;
+      const cuts = [...new Set([...v.binning.cuts, thresholdCut(e)])].sort(
+        (a, b) => a - b,
+      );
+      await configure(
+        v.columnId,
+        "discretised",
+        "manual",
+        cuts.length + 1,
+        cuts,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  async function exportGraph(withProbabilities: boolean) {
+    if (withProbabilities && !current.value) {
+      error.value =
+        "Run inference for current probabilities before exporting them.";
+      return;
+    }
+    return await job(
+      "graph",
+      {
+        project: project.value,
+        options: {
+          posterior: withProbabilities ? results.value!.posterior : undefined,
+        },
+      },
+      (x) => z.object({ svg: z.string() }).parse(x),
+    );
+  }
+  async function exportSamples(
+    groupId: string,
+    options: import("./sampling").SampleOptions,
+  ) {
+    if (!current.value || !results.value?.groups[groupId]) {
+      error.value = "Run inference before sampling the current query.";
+      return;
+    }
+    return await job(
+      "sample",
+      {
+        project: project.value,
+        options: { ...options, groupId, joint: results.value.groups[groupId] },
+      },
+      (x) =>
+        z
+          .object({ archive: z.instanceof(Uint8Array), count: z.number() })
+          .parse(x),
+    );
+  }
   function cancel() {
     client.cancel();
   }
   return {
+    setEvidence,
+    addThresholdCut,
+    exportGraph,
+    exportSamples,
     activeTab,
     embedDataset,
     renameStates,

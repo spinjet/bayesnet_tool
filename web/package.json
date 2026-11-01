@@ -1,6 +1,6 @@
 {
   "name": "bayesnet-browser",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "PDOPT-BN local-first Bayesian network workspace",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -18,8 +18,10 @@
   "author": "",
   "type": "module",
   "dependencies": {
+    "@viz-js/viz": "3.31.0",
     "@vue-flow/core": "1.48.2",
     "elkjs": "^0.12.1",
+    "fflate": "0.8.3",
     "jsagrum": "0.1.3",
     "papaparse": "^5.7.0",
     "pinia": "4.1.0",

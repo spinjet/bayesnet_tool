@@ -33,16 +33,16 @@ Empty fields are missing initially; strings such as `NA` remain categories unles
 The upper area contains a read-only probability graph and tabbed query results. The bottom controls contain training, shared evidence and query configuration. Resize their height balance with the slider; narrow screens stack the sections.
 
 1. **Review training data**, inspect retained/excluded counts, select MLE or Dirichlet, and click **Train model**. Training commits all CPTs atomically. MLE blocks unobserved learned rows; explicit Dirichlet smoothing defaults to α=1 **per child-state cell**. Uniform rows are valid without observations.
-2. Assign hard evidence to any model variables. Numeric observations map through the saved cuts. All query groups share this evidence.
+2. Assign a single state, an allowed-state set, or a numeric threshold to any model variables. Numeric observations map through the saved cuts. All query groups share this evidence.
 3. Create named query views, select targets, and reorder them using the arrow buttons. One target produces prior/posterior bars; two produce a joint heatmap; three or more produce a combination table. Tables support sorting, pagination and state filtering.
-4. Click **Run inference** to update **every graph node** and every configured query group together. Observed targets are fixed to their evidence state. Evidence/model/query changes mark previous output outdated.
+4. Click **Run inference** to update **every graph node** and every configured query group together. Observed targets are restricted to their allowed states. Evidence/model/query changes mark previous output outdated.
 5. Filters do not renormalise probabilities. Displayed probability mass describes the matching combinations, while exports contain the full selected distribution.
 
 Joint probabilities are computed exactly through conditional inference, not multiplication of separate marginals. Limits are 4,096 combinations per group, 8,192 total, and 10 groups. These are output guards, not runtime guarantees. Cancellation and a 30-second watchdog preserve work; large queries may need fewer targets/states.
 
 ## Save, reopen and export
 
-**Save project** downloads schema-version-2 JSON. Old version-1 projects migrate automatically, preserving learned probabilities, cuts, evidence and positions, and creating individual query views for their previous targets. Legacy files with more than 10 targets retain all views but require removing surplus groups before inference.
+**Save project** downloads schema-version-3 JSON. Old version-1 and version-2 projects migrate automatically, preserving learned probabilities, cuts, evidence and positions, and creating individual query views for their previous targets. Legacy files with more than 10 targets retain all views but require removing surplus groups before inference.
 
 CSV embedding is off by default. Saved CPTs remain queryable without raw data; reattach the exact matching CSV in Build to retrain. Opting into embedding includes the entire source CSV. Project files and exports contain model parameters and labels, which may be sensitive. There is no recovery database, telemetry, account or upload endpoint.
 
@@ -73,3 +73,17 @@ The optional reference generator runs from `web/` using the existing Python 3.11
 Python is not shipped or called by the web runtime. See [hosting](docs/hosting.md), [verification](docs/verification.md), and the [iteration decisions](docs/decisions/002-workspaces-joint-queries.md).
 
 Development continues on `prototype/browser-bayesnet`; `main` and the original Python application are unchanged. Manual CPT editing, structure learning, offline installation, browser recovery and surrogate optimisation remain deferred.
+
+## Events, graph images and sampling (0.3)
+
+Expand **Multiple states / numeric threshold** in Shared evidence to select several allowed states (OR within one variable, AND across variables). Numeric predicates support ≥, >, < and ≤. For discretised variables an exact cut is required; a threshold splitting a bin blocks inference. **Add exact cut & retrain** preserves the predicate, adds the boundary, and invalidates affected CPTs. Reattach the source CSV if necessary. Cuts enter the upper bin; > and ≤ use the next representable IEEE-754 number so equality is handled exactly, without snapping or fractional-bin assumptions. Finite numeric states compare their actual values directly.
+
+Set-valued evidence is computed exactly through disposable deterministic indicator leaves inside the inference worker. These leaves never appear in the model, saved file or images. Unresolved predicates can be saved as drafts. Impossible evidence preserves previous results as outdated.
+
+Each Build node has four connection handles. Drag from any side of a parent to any side of a child. Keyboard connection controls also select From/To sides. Side choices are saved as presentation only.
+
+**Export network image** downloads Graphviz hierarchical SVG or PNG, optionally including current all-node probabilities. It exports the structure, independently of the canvas positions. Probability export requires current inference results. Graphviz runs locally in a cancellable worker; PNG rasterisation uses the browser canvas. Large PNGs are blocked with an SVG alternative.
+
+**Sample queried distribution** exports a ZIP containing samples.csv and manifest.json. Defaults: 1,000 rows, seed 42; maximum 100,000 rows and 100 MiB CSV. The deterministic mulberry32-v1 generator samples whole state combinations from the active query's full joint posterior; visual filters have no effect. Categorical values use display labels; finite numeric states use exact source numbers. Discretised numeric states draw uniformly within their bin intersected with finite editable bounds, defaulting to fitted min/max. This is an explicit within-bin assumption, not a learned continuous density. Bounds excluding any positive-probability state block export rather than changing the distribution. The manifest records ordering, labels, evidence, bounds, posterior, seed and training provenance.
+
+Schema 3 adds event evidence and connection sides. Versions 1 and 2 import with unchanged CPTs and numerical behavior; missing sides default to right → left. Older applications cannot read schema 3. Keep a backup before opening with a newer version. Graphviz/Expat source links and license texts ship under public/notices/graphviz. No backend, network upload, account or website publication is added.

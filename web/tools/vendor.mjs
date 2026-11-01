@@ -42,3 +42,9 @@ await writeFile(
   "public/notices/dependencies.json",
   JSON.stringify(manifest, null, 2) + "\n",
 );
+
+// Exact backend provenance documents Graphviz 16.1.0 and Expat 2.8.5.
+await cp(
+  "node_modules/@viz-js/viz/lib/provenance.json",
+  "public/notices/graphviz/build-provenance.json",
+);

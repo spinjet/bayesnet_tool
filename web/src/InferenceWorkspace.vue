@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from "vue";
 import { useProject } from "./store";
-import { inferenceReady, stateLabel, type Variable } from "./domain";
+import {
+  inferenceReady,
+  stateLabel,
+  evidenceLabel,
+  resolveEvidence,
+} from "./domain";
 import { validateQueries, querySize, QUERY_LIMITS } from "./engine";
-import { encode } from "./processing";
 import { csvCell, download } from "./files";
 import ProbabilityGraph from "./ProbabilityGraph.vue";
+import EvidenceControl from "./EvidenceControl.vue";
+import SampleExport from "./SampleExport.vue";
 import QueryResults from "./QueryResults.vue";
 const st = useProject(),
   topPercent = ref(66),
   method = ref<"mle" | "dirichlet">("dirichlet"),
   alpha = ref(1),
-  activeGroupId = ref(""),
-  numeric = ref<Record<string, string | number>>({});
+  activeGroupId = ref("");
 watch(
   () => st.project.queryGroups.map((g) => g.id),
   (ids) => {
@@ -30,6 +35,7 @@ const resultProject = computed(() =>
 const queryError = computed(() => {
   try {
     inferenceReady(st.project);
+    resolveEvidence(st.project);
     validateQueries(st.project.variables, st.project.queryGroups);
     return "";
   } catch (e) {
@@ -47,24 +53,10 @@ const evidenceDescription = computed(
     Object.entries(resultProject.value.evidence)
       .map(([id, k]) => {
         const v = resultProject.value.variables.find((v) => v.id === id)!;
-        return `${v.label} = ${stateLabel(v, k)}`;
+        return evidenceLabel(v, k);
       })
       .join(" · ") || "None (prior distributions)",
 );
-function setEvidence(id: string, value: string) {
-  if (value === "") delete st.project.evidence[id];
-  else st.project.evidence[id] = Number(value);
-  st.touch("query");
-}
-function mapNumeric(v: Variable) {
-  try {
-    st.project.evidence[v.id] = encode(v, String(numeric.value[v.id] ?? ""));
-    st.touch("query");
-    st.error = "";
-  } catch (e) {
-    st.error = (e as Error).message;
-  }
-}
 function target(id: string, checked: boolean) {
   if (!active.value) return;
   active.value.targetIds = checked
@@ -127,7 +119,7 @@ function exportGroup(kind: "json" | "csv") {
     group: { ...active.value },
     evidence: Object.entries(project.evidence).map(([id, k]) => {
       const v = project.variables.find((v) => v.id === id)!;
-      return { variableId: id, stateId: k, label: stateLabel(v, k) };
+      return { variableId: id, assignment: k, label: evidenceLabel(v, k) };
     }),
     engine: "jsagrum@0.1.3",
     method: "exact joint via conditional inference",
@@ -260,6 +252,7 @@ function exportGroup(kind: "json" | "csv") {
           <p v-if="result" class="tiny muted">
             Evidence: {{ evidenceDescription }}
           </p>
+          <SampleExport v-if="active" :group-id="active.id" />
           <QueryResults
             v-if="result"
             :project="resultProject"
@@ -359,30 +352,11 @@ function exportGroup(kind: "json" | "csv") {
       <fieldset>
         <legend>Shared evidence</legend>
         <div class="evidence-list">
-          <div v-for="v in st.project.variables" :key="v.id">
-            <label class="field"
-              >{{ v.label
-              }}<select
-                :value="st.project.evidence[v.id] ?? ''"
-                @change="
-                  setEvidence(v.id, ($event.target as HTMLSelectElement).value)
-                "
-              >
-                <option value="">Unobserved</option>
-                <option v-for="(_, k) in v.states" :key="k" :value="k">
-                  {{ stateLabel(v, k) }}
-                </option>
-              </select></label
-            >
-            <div v-if="v.binning" class="numeric-input">
-              <input
-                type="number"
-                v-model="numeric[v.id]"
-                :aria-label="`Numeric evidence for ${v.label}`"
-                placeholder="Numeric observation"
-              /><button @click="mapNumeric(v)">Map value</button>
-            </div>
-          </div>
+          <EvidenceControl
+            v-for="v in st.project.variables"
+            :key="v.id"
+            :variable="v"
+          />
         </div>
         <button
           @click="

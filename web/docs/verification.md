@@ -1,12 +1,12 @@
 # PDOPT-BN iteration verification
 
-Validated in the managed Linux environment on 1 November 2026. This report covers the two-workspace iteration; it is not public-release certification.
+Validated in the managed Linux environment on 1 November 2026. This report covers the event-evidence and export iteration; it is not public-release certification.
 
 ## Current results
 
 - Clean `npm ci`, TypeScript checks, formatting and production builds pass.
-- **30 unit/numerical tests pass**, covering the original mathematical checks plus state aliases, display precision, uniform CPTs, project migration, query budgets and true joint distributions.
-- **10 Chromium browser scenarios pass at `/` and the same 10 pass under `/bayesnet/`**.
+- **39 unit/numerical tests pass**, covering the original mathematical checks plus state aliases, display precision, uniform CPTs, project migration, query budgets and true joint distributions.
+- **15 Chromium browser scenarios pass at `/` and the same 15 pass under `/bayesnet/`**.
 - Browser: Chromium 154.0.8037.57 on Linux. No browser-computed probability placeholders are used.
 
 ## Numerical evidence
@@ -26,7 +26,7 @@ The production browser suite verifies:
 - CSV import, editable Build graph, training-data review, shared evidence and all-node probability updates.
 - Separate workspaces retaining controls, categorical aliases, uniform-mode retraining, numeric precision and exact-boundary evidence mapping.
 - Joint heatmaps, multiple query tabs, three-target filtering without renormalisation, displayed probability mass, full JSON/CSV exports and adjustable section heights.
-- Data-free project reopening, embedded cyclic drafts, corruption handling, v1-to-v2 migration with unchanged saved CPTs, and cycle repair.
+- Data-free project reopening, embedded cyclic drafts, corruption handling, v1/v2-to-v3 migration with unchanged saved CPTs, and cycle repair.
 - Cancellation, stale-response rejection and successful recovery from a missing WASM asset.
 - Page-error and external-request inspection during the complete CSV workflow: only same-origin static assets are requested.
 
@@ -51,7 +51,13 @@ Serve the production build using `npm run preview`, then run `npm run test:e2e`.
 - Firefox, Playwright WebKit and actual Safari remain **unrun**. The active cloud network policy still lacks browser-download domains; earlier draft additions have not been applied. Actual Safari requires a macOS check. Chromium results do not establish cross-browser certification.
 - jsAgrum 0.1.3 is beta and does not reliably diagnose impossible evidence directly. The adapter's conditional-probability guard remains mandatory. Joint queries use exact repeated conditioning because no public joint API is exposed.
 - Query outputs are capped at 4,096 combinations per group, 8,192 total and 10 groups. Large models can still exceed the 30-second watchdog; limits are not performance guarantees. Long-duration native-memory profiling and hardware-calibrated benchmarks remain release work.
-- V1 drafts with more than 10 targets preserve all migrated groups but require explicit reduction before running. Version 2 is used for new saves; older application versions cannot read it.
+- V1 drafts with more than 10 targets preserve all migrated groups but require explicit reduction before running. Version 3 is used for new saves; older application versions cannot read it.
 - Uniform mode is not balanced sampling or intervention. It removes the selected variable's dependence on its parents in its CPT, while preserving graph edges and original dataset counts.
 - Runtime licence texts and core copyright/MIT notices remain shipped. Final provenance/EPL source review, formal accessibility review and production-server CSP validation precede public distribution.
 - No website has been published. Structure learning, manual CPT editing, browser recovery, offline/PWA installation and surrogate optimisation remain deferred.
+
+## Event and export checks
+
+The added tests check exact multi-state conditioning on multiple variables against explicit joint-cell enumeration, tautological events, deterministic impossible events and recovery, and no indicator leakage into saved/displayed models. Threshold tests cover all four comparison operators, split-bin draft saves, next-representable boundaries and finite numeric states.
+
+Seeded sampling checks joint forbidden cells, empirical frequency, reproducibility, numeric bounds/bin membership, exact finite numeric values, display labels, CSV text escaping, provenance and allocation guards. Real Graphviz output checks escaped labels, four-side ports and probability annotations. Browser tests exercise rebin/retrain, shared subsets, SVG and PNG signatures, ZIP contents, presentation persistence and same-origin-only asset requests. Graphviz is lazy loaded into the existing worker; its embedded WASM requires no custom compilation. SVG is capped at 10 MiB, PNG at 20 million pixels and 16,000 pixels per dimension.

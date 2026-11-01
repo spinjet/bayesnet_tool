@@ -1,11 +1,25 @@
 import ELK from "elkjs/lib/elk-api.js";
 import { z } from "zod";
-import { datasetSchema, validateProject, inferenceReady } from "./domain";
+import {
+  datasetSchema,
+  validateProject,
+  inferenceReady,
+  resolveEvidence,
+} from "./domain";
 import { parseCsv, configureVariable, prepareRows, train } from "./processing";
 import { infer, ModelError } from "./engine";
 const requestSchema = z.object({
   id: z.number().int(),
-  op: z.enum(["import", "configure", "preview", "train", "infer", "layout"]),
+  op: z.enum([
+    "import",
+    "configure",
+    "preview",
+    "train",
+    "infer",
+    "layout",
+    "sample",
+    "graph",
+  ]),
   payload: z.unknown(),
 });
 self.onmessage = async ({ data }) => {
@@ -36,7 +50,35 @@ self.onmessage = async ({ data }) => {
         })
         .parse(raw);
       const project = validateProject(p.project);
-      if (request.op === "layout") {
+      if (request.op === "graph") {
+        const opts = z
+          .object({
+            posterior: z.record(z.string(), z.array(z.number())).optional(),
+          })
+          .parse(p.options);
+        const { graphSvg } = await import("./graph-export");
+        result = { svg: await graphSvg(project, opts.posterior) };
+      } else if (request.op === "sample") {
+        const opts = z
+          .object({
+            groupId: z.string(),
+            joint: z.object({
+              targetIds: z.array(z.string()),
+              shape: z.array(z.number().int()),
+              prior: z.array(z.number()),
+              posterior: z.array(z.number()),
+            }),
+            count: z.number().int(),
+            seed: z.number().int(),
+            bounds: z.record(
+              z.string(),
+              z.object({ min: z.number().finite(), max: z.number().finite() }),
+            ),
+          })
+          .parse(p.options);
+        const { sampleArchive } = await import("./sampling");
+        result = sampleArchive(project, opts.groupId, opts.joint, opts);
+      } else if (request.op === "layout") {
         const layoutUrl = new URL(p.layoutUrl!);
         if (layoutUrl.origin !== self.location.origin)
           throw new Error("Layout must load locally.");
@@ -85,7 +127,7 @@ self.onmessage = async ({ data }) => {
         }
         result = await infer(
           { variables: project.variables, cpts: project.cpts },
-          project.evidence,
+          resolveEvidence(project),
           project.variables.map((v) => v.id),
           async () => {
             try {

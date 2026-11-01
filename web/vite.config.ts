@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 export default defineConfig({
   plugins: [vue()],
+  worker: { format: "es" },
   base: process.env.APP_BASE || "/",
   build: {
     target: "es2022",

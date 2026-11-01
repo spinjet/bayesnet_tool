@@ -96,7 +96,7 @@ test("branding, state aliases, uniform CPT training and presentation-only edits"
   await page.getByRole("button", { name: "Save project", exact: true }).click();
   const file = await download;
   const saved = JSON.parse(await readFile((await file.path())!, "utf8"));
-  expect(saved.schemaVersion).toBe(2);
+  expect(saved.schemaVersion).toBe(3);
   const v = saved.variables.find((v: any) => v.label === "Failure");
   expect(v.states).toEqual(["No", "Yes"]);
   expect(v.stateLabels).toEqual(["Working", "Failed"]);
@@ -230,7 +230,7 @@ test("v1 projects migrate to query views without changing saved CPTs", async ({
   const saved = JSON.parse(
     await readFile((await savedDownload.path())!, "utf8"),
   );
-  expect(saved.schemaVersion).toBe(2);
+  expect(saved.schemaVersion).toBe(3);
   expect(saved.cpts.map((c: any) => c.values)).toEqual(values);
   expect(saved.queryGroups).toHaveLength(3);
 });

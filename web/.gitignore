@@ -6,3 +6,5 @@ playwright-report/
 
 public/notices/dependencies/
 public/notices/dependencies.json
+
+public/notices/graphviz/build-provenance.json

@@ -88,7 +88,8 @@ function color(p: number) {
       v-if="variables.some((v) => project.evidence[v.id] !== undefined)"
       class="tiny muted"
     >
-      Targets present in the shared evidence are fixed to their observed states.
+      Evidence restricts observed targets to their allowed states; a multi-state
+      event need not fix a single state.
     </p>
     <template v-if="variables.length === 1">
       <div class="chart-legend">

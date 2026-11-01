@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ModelError } from "./engine";
-import { validateProject as validateV1 } from "./legacy-v1";
+import { validateProject as validateV2 } from "./legacy-v2";
+import { nextUp } from "./numbers";
 export const LIMITS = {
   fileBytes: 100 * 1024 * 1024,
   states: 64,
@@ -52,16 +53,37 @@ export const queryGroupSchema = z.object({
   targetIds: z.array(z.string()).max(100),
 });
 export type QueryGroup = z.infer<typeof queryGroupSchema>;
+export const evidenceValueSchema = z.union([
+  z.number().int().nonnegative(),
+  z.object({
+    kind: z.literal("states"),
+    states: z.array(z.number().int().nonnegative()).min(1).max(64),
+  }),
+  z.object({
+    kind: z.literal("threshold"),
+    operator: z.enum(["gte", "gt", "lt", "lte"]),
+    value: z.number().finite(),
+  }),
+]);
+export type EvidenceValue = z.infer<typeof evidenceValueSchema>;
 export const projectSchema = z.object({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
   id: z.string(),
   name: z.string().min(1).max(200),
   variables: z.array(variableSchema).max(100),
   edges: z
-    .array(z.object({ id: z.string(), source: z.string(), target: z.string() }))
+    .array(
+      z.object({
+        id: z.string(),
+        source: z.string(),
+        target: z.string(),
+        sourceHandle: z.enum(["left", "right", "top", "bottom"]).optional(),
+        targetHandle: z.enum(["left", "right", "top", "bottom"]).optional(),
+      }),
+    )
     .max(1000),
   cpts: z.array(cptSchema).max(100),
-  evidence: z.record(z.string(), z.number().int().nonnegative()),
+  evidence: z.record(z.string(), evidenceValueSchema),
   queryGroups: z.array(queryGroupSchema).max(100),
   dataset: z
     .object({
@@ -99,7 +121,7 @@ export const datasetSchema = z.object({
 export type Dataset = z.infer<typeof datasetSchema>;
 export function emptyProject(): Project {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: crypto.randomUUID(),
     name: "Untitled network",
     variables: [],
@@ -197,31 +219,18 @@ export function validateProject(input: unknown): Project {
     input &&
     typeof input === "object" &&
     "schemaVersion" in input &&
-    input.schemaVersion === 1
+    (input.schemaVersion === 1 || input.schemaVersion === 2)
   ) {
-    const old = validateV1(input);
-    const migrated: Project = {
+    const old = validateV2(input);
+    return validateProject({
       ...old,
-      schemaVersion: 2,
-      variables: old.variables.map((v) => ({
-        ...v,
-        stateLabels: defaultStateLabels(v.states),
-        displayDecimals: 2,
-        parameterMode: "learned",
+      schemaVersion: 3,
+      edges: old.edges.map((e) => ({
+        ...e,
+        sourceHandle: "right",
+        targetHandle: "left",
       })),
-      queryGroups: old.targetIds.map((id) => ({
-        id: crypto.randomUUID(),
-        name:
-          old.variables
-            .find((v) => v.id === id)!
-            .label.trim()
-            .slice(0, 100) || "Query",
-        targetIds: [id],
-      })),
-    };
-    for (const c of migrated.cpts)
-      c.signature = signature(migrated, c.variableId);
-    return validateProject(migrated);
+    });
   }
   const p = projectSchema.parse(input),
     ids = new Set(p.variables.map((v) => v.id));
@@ -322,13 +331,25 @@ export function validateProject(input: unknown): Project {
         throw new Error("CPT probabilities must sum to 1.");
     }
   }
-  for (const [id, state] of Object.entries(p.evidence))
-    if (
-      !ids.has(id) ||
-      state >= p.variables.find((v) => v.id === id)!.states.length
-    )
+  for (const [id, e] of Object.entries(p.evidence)) {
+    const v = p.variables.find((v) => v.id === id);
+    if (!v) throw new Error("Unknown evidence variable.");
+    if (typeof e === "number" && e >= v.states.length)
       throw new Error("Unknown evidence state.");
-
+    if (
+      typeof e === "object" &&
+      e.kind === "states" &&
+      (new Set(e.states).size !== e.states.length ||
+        e.states.some((k) => k >= v.states.length))
+    )
+      throw new Error("Unknown or duplicate evidence states.");
+    if (
+      typeof e === "object" &&
+      e.kind === "threshold" &&
+      v.representation === "categorical"
+    )
+      throw new Error("Numeric evidence requires a numeric variable.");
+  }
   return p;
 }
 export function inferenceReady(p: Project) {
@@ -367,4 +388,74 @@ export function precisionWarning(v: Variable): boolean {
   if (!v.binning) return false;
   const labels = v.binning.cuts.map((x) => x.toFixed(v.displayDecimals));
   return new Set(labels).size < labels.length;
+}
+
+export function thresholdCut(
+  e: Extract<EvidenceValue, { kind: "threshold" }>,
+): number {
+  const cut =
+    e.operator === "gt" || e.operator === "lte" ? nextUp(e.value) : e.value;
+  if (!Number.isFinite(cut))
+    throw new Error("Threshold is outside the supported finite range.");
+  return cut;
+}
+export function allowedStates(v: Variable, e: EvidenceValue): number[] {
+  if (typeof e === "number") return [e];
+  if (e.kind === "states") return [...e.states];
+  if (v.representation === "categorical")
+    throw new Error("Numeric evidence requires a numeric variable.");
+  const test = (x: number) =>
+    e.operator === "gte"
+      ? x >= e.value
+      : e.operator === "gt"
+        ? x > e.value
+        : e.operator === "lt"
+          ? x < e.value
+          : x <= e.value;
+  if (v.representation === "finiteNumeric")
+    return v.states
+      .map((s, i) => (test(Number(s)) ? i : -1))
+      .filter((i) => i >= 0);
+  const cut = thresholdCut(e),
+    index = v.binning!.cuts.indexOf(cut);
+  if (index < 0)
+    throw new ModelError(
+      "THRESHOLD_SPLITS_BIN",
+      `The threshold splits a bin in ${v.label}. Add the exact cut and retrain; thresholds are never rounded to a nearby bin.`,
+    );
+  const upper = e.operator === "gte" || e.operator === "gt";
+  return v.states
+    .map((_, i) => i)
+    .filter((i) => (upper ? i > index : i <= index));
+}
+export function resolveEvidence(p: Project): Record<string, number | number[]> {
+  return Object.fromEntries(
+    Object.entries(p.evidence).map(([id, e]) => {
+      const states = allowedStates(
+        p.variables.find((v) => v.id === id)!,
+        e,
+      );
+      return [id, states.length === 1 ? states[0] : states];
+    }),
+  );
+}
+export function fixedEvidence(p: Project, id: string): boolean {
+  const e = p.evidence[id];
+  if (e === undefined) return false;
+  try {
+    return (
+      allowedStates(
+        p.variables.find((v) => v.id === id)!,
+        e,
+      ).length === 1
+    );
+  } catch {
+    return false;
+  }
+}
+export function evidenceLabel(v: Variable, e: EvidenceValue): string {
+  if (typeof e === "object" && e.kind === "threshold")
+    return `${v.label} ${{ gte: "≥", gt: ">", lt: "<", lte: "≤" }[e.operator]} ${e.value}`;
+  const states = typeof e === "number" ? [e] : e.states;
+  return `${v.label} ∈ {${states.map((k) => stateLabel(v, k)).join(", ")}}`;
 }

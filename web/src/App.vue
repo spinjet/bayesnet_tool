@@ -3,6 +3,7 @@ import { ref, onMounted, onBeforeUnmount } from "vue";
 import { useProject } from "./store";
 import { LIMITS } from "./domain";
 import { download } from "./files";
+import GraphExport from "./GraphExport.vue";
 import BuildWorkspace from "./BuildWorkspace.vue";
 import InferenceWorkspace from "./InferenceWorkspace.vue";
 const st = useProject(),
@@ -76,6 +77,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeUnload));
         /><span v-if="st.dirty" title="Unsaved changes">●</span>
       </div>
       <nav aria-label="Project actions">
+        <GraphExport />
         <button @click="st.newProject()" :disabled="st.busy">New</button
         ><button @click="openInput?.click()" :disabled="st.busy">Open</button
         ><button @click="save">Save project</button>

@@ -36,6 +36,8 @@ const nodes = computed(() =>
 const edges = computed(() =>
   st.project.edges.map((e) => ({
     ...e,
+    sourceHandle: e.sourceHandle || "right",
+    targetHandle: e.targetHandle || "left",
     markerEnd: "arrowclosed",
     style: { stroke: "#718599", strokeWidth: 2 },
   })),
@@ -91,9 +93,18 @@ watch(
       >
         <template #node-probability="{ id, data }"
           ><Handle
-            type="target"
-            :position="Position.Left"
-            :connectable="false" />
+            v-for="side in [
+              Position.Left,
+              Position.Right,
+              Position.Top,
+              Position.Bottom,
+            ]"
+            :key="side"
+            :id="side"
+            type="source"
+            :position="side"
+            :connectable="false"
+          />
           <div
             class="network-node probability-node nowheel"
             :class="{
@@ -135,8 +146,7 @@ watch(
               </button></template
             >
           </div>
-          <Handle type="source" :position="Position.Right" :connectable="false"
-        /></template>
+        </template>
       </VueFlow>
       <p v-if="!st.project.variables.length" class="empty-canvas">
         Add variables in Build to see the network here.

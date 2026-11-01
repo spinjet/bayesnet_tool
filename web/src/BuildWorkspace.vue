@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import {
   VueFlow,
+  ConnectionMode,
   Handle,
   Position,
   useVueFlow,
@@ -26,6 +27,9 @@ const representation = ref<Variable["representation"]>("categorical"),
   bins = ref(3),
   manual = ref(""),
   tokenText = ref("");
+type Side = "left" | "right" | "top" | "bottom";
+const sourceSide = ref<Side>("right"),
+  targetSide = ref<Side>("left");
 const source = ref(""),
   destination = ref("");
 const selected = computed(() =>
@@ -68,6 +72,8 @@ const nodes = computed(() =>
 const edges = computed(() =>
   st.project.edges.map((e) => ({
     ...e,
+    sourceHandle: e.sourceHandle || "right",
+    targetHandle: e.targetHandle || "left",
     style: {
       stroke:
         st.cycles.includes(e.source) && st.cycles.includes(e.target)
@@ -143,7 +149,13 @@ function configure() {
   );
 }
 function connect(c: Connection) {
-  if (c.source && c.target) st.addEdge(c.source, c.target);
+  if (c.source && c.target)
+    st.addEdge(
+      c.source,
+      c.target,
+      (c.sourceHandle || "right") as Side,
+      (c.targetHandle || "left") as Side,
+    );
 }
 function dropEdge(id: string) {
   st.project.edges = st.project.edges.filter((e) => e.id !== id);
@@ -342,6 +354,7 @@ function parentAssignment(
         </div>
         <div class="graph-wrap">
           <VueFlow
+            :connection-mode="ConnectionMode.Loose"
             id="build"
             :nodes="nodes"
             :edges="edges"
@@ -362,7 +375,18 @@ function parentAssignment(
             "
           >
             <template #node-default="{ data }"
-              ><Handle type="target" :position="Position.Left" />
+              ><Handle
+                v-for="side in [
+                  Position.Left,
+                  Position.Right,
+                  Position.Top,
+                  Position.Bottom,
+                ]"
+                :key="side"
+                :id="side"
+                type="source"
+                :position="side"
+              />
               <div
                 class="network-node"
                 :class="{ cyclic: data.cycle, observed: data.evidence }"
@@ -382,8 +406,7 @@ function parentAssignment(
                 <strong>{{ data.label }}</strong
                 ><small>{{ data.states }} states</small>
               </div>
-              <Handle type="source" :position="Position.Right"
-            /></template>
+            </template>
           </VueFlow>
           <div v-if="!st.project.variables.length" class="empty-canvas">
             <div class="empty-icon">○ ── ○</div>
@@ -430,8 +453,26 @@ function parentAssignment(
                   {{ v.label }}
                 </option>
               </select></label
+            ><label
+              >From side<select v-model="sourceSide">
+                <option
+                  v-for="side in ['left', 'right', 'top', 'bottom']"
+                  :key="side"
+                >
+                  {{ side }}
+                </option>
+              </select></label
+            ><label
+              >To side<select v-model="targetSide">
+                <option
+                  v-for="side in ['left', 'right', 'top', 'bottom']"
+                  :key="side"
+                >
+                  {{ side }}
+                </option>
+              </select></label
             ><button
-              @click="st.addEdge(source, destination)"
+              @click="st.addEdge(source, destination, sourceSide, targetSide)"
               :disabled="!source || !destination"
             >
               Connect

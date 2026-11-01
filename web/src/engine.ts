@@ -66,7 +66,8 @@ export function validateQueries(
       "Queries exceed 8,192 total combinations.",
     );
 }
-export type Evidence = Record<string, number>;
+export type Evidence = Record<string, number | number[]>;
+type HardEvidence = Record<string, number>;
 export class ModelError extends Error {
   constructor(
     public code: string,
@@ -96,6 +97,46 @@ export async function infer(
 ) {
   // A fresh native model prevents retained evidence and stale native CPTs.
   validateQueries(model.variables, groups);
+  // A deterministic indicator leaf turns a set-valued event into exact hard
+  // evidence. It is disposable and never enters the saved/displayed graph.
+  const hard: HardEvidence = {};
+  const variables = [...model.variables],
+    cpts = [...model.cpts];
+  for (const [id, value] of Object.entries(evidence)) {
+    const v = variables.find((v) => v.id === id);
+    if (!v) throw new ModelError("UNKNOWN_STATE", "Unknown evidence variable.");
+    const states = typeof value === "number" ? [value] : value;
+    if (!states.length)
+      throw new ModelError(
+        "IMPOSSIBLE_EVIDENCE",
+        "Evidence permits no states.",
+      );
+    if (
+      new Set(states).size !== states.length ||
+      states.some((k) => !Number.isInteger(k) || k < 0 || k >= v.states.length)
+    )
+      throw new ModelError(
+        "UNKNOWN_STATE",
+        "Unknown or duplicate evidence states.",
+      );
+    if (states.length === 1) {
+      hard[id] = states[0];
+      continue;
+    }
+    if (states.length === v.states.length) continue;
+    let aux = `__event_${variables.length}`;
+    while (variables.some((v) => v.id === aux)) aux += "_";
+    variables.push({ id: aux, states: ["false", "true"] });
+    cpts.push({
+      variableId: aux,
+      parentIds: [id],
+      values: v.states.flatMap((_, i) =>
+        states.includes(i) ? [0, 1] : [1, 0],
+      ),
+    });
+    hard[aux] = 1;
+  }
+  model = { variables, cpts };
   const bn = await create();
   try {
     const ids = new Map<string, number>();
@@ -154,7 +195,7 @@ export async function infer(
       prior[id] = distribution(await bn.getPosterior(ids.get(id)!));
     // Enumerate target prefixes with exact conditional probabilities. The last
     // target varies fastest. A prefix is inferred once, not once per leaf.
-    async function joint(group: QueryGroup, base: Evidence) {
+    async function joint(group: QueryGroup, base: HardEvidence) {
       const shape = group.targetIds.map(
         (id) => model.variables.find((v) => v.id === id)!.states.length,
       );
@@ -212,7 +253,7 @@ export async function infer(
       };
     // The beta binding does not diagnose impossible evidence. Validate each
     // conditional factor P(e_i | e_1..e_(i-1)) before adding that assignment.
-    for (const [id, state] of Object.entries(evidence)) {
+    for (const [id, state] of Object.entries(hard)) {
       const p = distribution(await bn.getPosterior(ids.get(id)!));
       if (p[state] === 0)
         throw new ModelError(
@@ -227,7 +268,7 @@ export async function infer(
     const posterior: Record<string, number[]> = {};
     for (const id of targets)
       posterior[id] = distribution(await bn.getPosterior(ids.get(id)!));
-    for (const g of groups) joints[g.id].posterior = await joint(g, evidence);
+    for (const g of groups) joints[g.id].posterior = await joint(g, hard);
     return { prior, posterior, groups: joints };
   } finally {
     bn.destroy();
