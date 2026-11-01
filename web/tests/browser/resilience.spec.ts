@@ -9,6 +9,9 @@ for (const operation of ["cancel", "stale"] as const)
     await page
       .getByRole("button", { name: "Load engineering example" })
       .click();
+    await page
+      .getByRole("tab", { name: "Train & Inference", exact: true })
+      .click();
     await expect(page.getByText("8 rows retained · 0 excluded")).toBeVisible();
     await page
       .getByRole("button", { name: "Train model", exact: true })
@@ -47,7 +50,7 @@ for (const operation of ["cancel", "stale"] as const)
     await expect(
       page.getByText("Current results", { exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".network-node")).toHaveCount(3);
+    await expect(page.locator("#inference-panel .network-node")).toHaveCount(3);
   });
 
 test("missing WASM preserves work and retry loads a fresh engine", async ({
@@ -55,6 +58,9 @@ test("missing WASM preserves work and retry loads a fresh engine", async ({
 }) => {
   await page.goto(base);
   await page.getByRole("button", { name: "Load engineering example" }).click();
+  await page
+    .getByRole("tab", { name: "Train & Inference", exact: true })
+    .click();
   await expect(page.getByText("8 rows retained · 0 excluded")).toBeVisible();
   await page.getByRole("button", { name: "Train model", exact: true }).click();
   await expect(
@@ -67,7 +73,7 @@ test("missing WASM preserves work and retry loads a fresh engine", async ({
   await expect(page.getByRole("alert")).toContainText(
     "Could not initialize WASM",
   );
-  await expect(page.locator(".network-node")).toHaveCount(3);
+  await expect(page.locator("#inference-panel .network-node")).toHaveCount(3);
   await page.unroute("**/libagrum.wasm");
   await page
     .getByRole("button", { name: "Run inference", exact: true })

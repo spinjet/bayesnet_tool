@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import {
   LIMITS,
+  defaultStateLabels,
   cyclicNodes,
   cptSize,
   parents,
@@ -159,6 +160,9 @@ export function configureVariable(
     columnId,
     representation,
     states: [],
+    stateLabels: [],
+    displayDecimals: existing?.displayDecimals ?? 2,
+    parameterMode: existing?.parameterMode ?? "learned",
     position: existing?.position || {
       x: 80 + (p.variables.length % 3) * 230,
       y: 80 + Math.floor(p.variables.length / 3) * 160,
@@ -210,6 +214,12 @@ export function configureVariable(
     throw new Error(
       "Variables need 2–64 states. Discretise high-cardinality numeric columns; exclude constant columns.",
     );
+  v.stateLabels = defaultStateLabels(
+    v.states.map((state) => {
+      const old = existing?.states.indexOf(state) ?? -1;
+      return old >= 0 ? existing!.stateLabels[old] : state;
+    }),
+  );
   return v;
 }
 export function prepareRows(dataset: Dataset, p: Project) {
@@ -263,7 +273,11 @@ export function train(
       counts[j * r + row[vi]]++;
       rowCounts[j]++;
     }
-    if (method === "mle" && rowCounts.includes(0))
+    if (
+      v.parameterMode !== "uniform" &&
+      method === "mle" &&
+      rowCounts.includes(0)
+    )
       throw new ModelError(
         "UNOBSERVED_PARENT_CONFIGURATION",
         `${v.label} has unobserved parent combinations. Retrain with Dirichlet smoothing.`,
@@ -273,12 +287,14 @@ export function train(
       parentIds,
       counts,
       rowCounts,
-      values: counts.map(
-        (n, i) => (n + a) / (rowCounts[Math.floor(i / r)] + r * a),
+      values: counts.map((n, i) =>
+        v.parameterMode === "uniform"
+          ? 1 / r
+          : (n + a) / (rowCounts[Math.floor(i / r)] + r * a),
       ),
       signature: signature(p, v.id),
-      origin: method,
-      alphaPerCell: a,
+      origin: v.parameterMode === "uniform" ? "uniform" : method,
+      alphaPerCell: v.parameterMode === "uniform" ? 0 : a,
       datasetHash: dataset.hash,
       trainedAt: new Date().toISOString(),
     };

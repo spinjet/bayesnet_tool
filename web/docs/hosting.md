@@ -45,4 +45,4 @@ Revalidate HTML and `vendor/` assets on each visit (`Cache-Control: no-cache`). 
 
 Project saves and exports are local downloads. Optional embedded CSV increases file size and includes the complete source, not just selected columns. There is no account, upload endpoint, background sync or recovery database.
 
-This branch does not publish a site. Broader browser checks, release notices, security-header validation and representative performance measurements precede public publication. Surrogate models and optimisation are a later phase; they may use an optional local Python companion without changing the standalone Bayesian workflow.
+PDOPT-BN has separate Build and Train & Inference workspaces and no URL routing between them. This branch does not publish a site. Broader browser checks, release notices, security-header validation and representative performance measurements precede public publication. Surrogate models and optimisation are a later phase; they may use an optional local Python companion without changing the standalone Bayesian workflow.

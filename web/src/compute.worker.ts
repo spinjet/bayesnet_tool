@@ -70,8 +70,7 @@ self.onmessage = async ({ data }) => {
         }
       } else if (request.op === "infer") {
         inferenceReady(project);
-        if (!project.targetIds.length)
-          throw new Error("Select at least one target.");
+
         const url = new URL(p.engineUrl!);
         if (url.origin !== self.location.origin)
           throw new Error("Engine must load from the same origin.");
@@ -87,7 +86,7 @@ self.onmessage = async ({ data }) => {
         result = await infer(
           { variables: project.variables, cpts: project.cpts },
           project.evidence,
-          project.targetIds,
+          project.variables.map((v) => v.id),
           async () => {
             try {
               return await createInProcessBN();
@@ -98,6 +97,7 @@ self.onmessage = async ({ data }) => {
               );
             }
           },
+          project.queryGroups,
         );
       } else {
         if (!p.dataset || p.dataset.hash !== project.dataset?.hash)

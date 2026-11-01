@@ -17,6 +17,15 @@ import {
 const resultSchema = z.object({
   prior: z.record(z.string(), z.array(z.number())),
   posterior: z.record(z.string(), z.array(z.number())),
+  groups: z.record(
+    z.string(),
+    z.object({
+      targetIds: z.array(z.string()),
+      shape: z.array(z.number().int()),
+      prior: z.array(z.number()),
+      posterior: z.array(z.number()),
+    }),
+  ),
 });
 export const useProject = defineStore("project", () => {
   const project = ref<Project>(emptyProject()),
@@ -29,6 +38,8 @@ export const useProject = defineStore("project", () => {
   const revisions = ref({ model: 0, data: 0, query: 0 }),
     results = ref<z.infer<typeof resultSchema>>(),
     resultStamp = ref("");
+  const activeTab = ref<"build" | "inference">("build"),
+    embedDataset = ref(false);
   const resultSnapshot = ref<Project>();
   const trainingPreview = ref<{
     retained: number;
@@ -108,7 +119,10 @@ export const useProject = defineStore("project", () => {
     dataset.value = d;
     selected.value = "";
     results.value = undefined;
+    resultSnapshot.value = undefined;
+    resultStamp.value = "";
     touch("data");
+    return true;
   }
   async function reattach(csv: string, name: string) {
     const d = await job(
@@ -159,10 +173,70 @@ export const useProject = defineStore("project", () => {
       delete project.value.evidence[v.id];
     } else {
       project.value.variables.push(v);
-      project.value.targetIds.push(v.id);
+      if (!project.value.queryGroups.length)
+        project.value.queryGroups.push({
+          id: crypto.randomUUID(),
+          name: v.label.trim().slice(0, 100) || "Query 1",
+          targetIds: [v.id],
+        });
     }
     if (selected.value === selectedAtStart) selected.value = v.id;
     touch();
+  }
+  function renameStates(id: string, labels: string[]) {
+    const v = project.value.variables.find((v) => v.id === id);
+    if (!v) return;
+    try {
+      const parsed = variableSchema.parse({ ...v, stateLabels: labels });
+      if (new Set(parsed.stateLabels).size !== parsed.stateLabels.length)
+        throw new Error("State display names must be unique.");
+      v.stateLabels = parsed.stateLabels;
+      touch("display");
+      error.value = "";
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+    }
+  }
+  function setPrecision(id: string, precision: number) {
+    if (!Number.isInteger(precision) || precision < 0 || precision > 12) {
+      error.value = "Decimal places must be an integer from 0 to 12.";
+      return;
+    }
+    const v = project.value.variables.find((v) => v.id === id);
+    if (v) {
+      v.displayDecimals = precision;
+      touch("display");
+      error.value = "";
+    }
+  }
+  function setParameterMode(id: string, mode: "learned" | "uniform") {
+    const v = project.value.variables.find((v) => v.id === id);
+    if (v && v.parameterMode !== mode) {
+      v.parameterMode = mode;
+      touch();
+    }
+  }
+  function addGroup() {
+    if (project.value.queryGroups.length >= 10) {
+      error.value = "Use at most 10 query groups.";
+      return;
+    }
+    const g = {
+      id: crypto.randomUUID(),
+      name: `Query ${project.value.queryGroups.length + 1}`,
+      targetIds: project.value.variables[0]
+        ? [project.value.variables[0].id]
+        : [],
+    };
+    project.value.queryGroups.push(g);
+    touch("query");
+    return g.id;
+  }
+  function removeGroup(id: string) {
+    project.value.queryGroups = project.value.queryGroups.filter(
+      (g) => g.id !== id,
+    );
+    touch("query");
   }
   function addEdge(source: string, target: string) {
     if (source === target) {
@@ -200,7 +274,8 @@ export const useProject = defineStore("project", () => {
     );
     project.value.cpts = project.value.cpts.filter((c) => c.variableId !== id);
     delete project.value.evidence[id];
-    project.value.targetIds = project.value.targetIds.filter((x) => x !== id);
+    for (const group of project.value.queryGroups)
+      group.targetIds = group.targetIds.filter((x) => x !== id);
     selected.value = "";
     touch();
   }
@@ -253,7 +328,31 @@ export const useProject = defineStore("project", () => {
           location.origin,
         ).href,
       },
-      (x) => resultSchema.parse(x),
+      (x) => {
+        const r = resultSchema.parse(x);
+        for (const v of snapshot.variables)
+          if (
+            r.prior[v.id]?.length !== v.states.length ||
+            r.posterior[v.id]?.length !== v.states.length
+          )
+            throw new Error("Invalid graph probability response.");
+        for (const g of snapshot.queryGroups) {
+          const j = r.groups[g.id];
+          const shape = g.targetIds.map(
+            (id) => snapshot.variables.find((v) => v.id === id)!.states.length,
+          );
+          const size = shape.reduce((a, b) => a * b, 1);
+          if (
+            !j ||
+            JSON.stringify(j.targetIds) !== JSON.stringify(g.targetIds) ||
+            JSON.stringify(j.shape) !== JSON.stringify(shape) ||
+            j.prior.length !== size ||
+            j.posterior.length !== size
+          )
+            throw new Error("Invalid joint probability response.");
+        }
+        return r;
+      },
     );
     if (r) {
       results.value = r;
@@ -288,8 +387,11 @@ export const useProject = defineStore("project", () => {
         return;
       client.cancel();
       project.value = p;
+      activeTab.value = "build";
       dataset.value = d;
       results.value = undefined;
+      resultSnapshot.value = undefined;
+      resultStamp.value = "";
       trainingPreview.value = undefined;
       selected.value = "";
       revisions.value = { model: 0, data: 0, query: 0 };
@@ -317,9 +419,12 @@ export const useProject = defineStore("project", () => {
     )
       return;
     client.cancel();
+    activeTab.value = "build";
     project.value = emptyProject();
     dataset.value = undefined;
     results.value = undefined;
+    resultSnapshot.value = undefined;
+    resultStamp.value = "";
     selected.value = "";
     trainingPreview.value = undefined;
     touch();
@@ -351,6 +456,13 @@ export const useProject = defineStore("project", () => {
     client.cancel();
   }
   return {
+    activeTab,
+    embedDataset,
+    renameStates,
+    setPrecision,
+    setParameterMode,
+    addGroup,
+    removeGroup,
     project,
     dataset,
     busy,

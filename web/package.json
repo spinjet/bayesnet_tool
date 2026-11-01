@@ -1,7 +1,7 @@
 {
   "name": "bayesnet-browser",
-  "version": "0.1.0",
-  "description": "Local-first data-trained Bayesian network workspace",
+  "version": "0.2.0",
+  "description": "PDOPT-BN local-first Bayesian network workspace",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "predev": "node tools/vendor.mjs",

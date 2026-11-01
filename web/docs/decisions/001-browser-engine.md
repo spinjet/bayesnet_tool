@@ -1,5 +1,7 @@
 # ADR 001: browser computation with a guarded jsAgrum adapter
 
+This records the original prototype decisions. [ADR 002](002-workspaces-joint-queries.md) adds schema 2, uniform mode, separate display labels and exact joint-query support.
+
 ## Decision and evidence
 
 Use the published `jsagrum@0.1.3` package, pinned in the npm lockfile. Its registry tarball integrity is SHA-512 `N4FG5zpl0zjkuQkLIoIuShwBpvkW4nbriiu1TfT/F6ag8ir33PlFDTJ3a+DCKFLlRMP9bggdGy4vW5CqPiKeyw==`. The package includes precompiled WASM (~1.95 MB), public TypeScript declarations, a double-precision model class and explicit `destroy()` disposal.

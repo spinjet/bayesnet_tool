@@ -2,42 +2,8 @@ import { test, expect } from "vitest";
 import { createInProcessBN } from "jsagrum";
 import { infer, type EngineModel } from "../src/engine";
 import reference from "../fixtures/reference.json";
-export function enumerate(
-  model: EngineModel,
-  evidence: Record<string, number>,
-) {
-  const marginals = Object.fromEntries(
-    model.variables.map((v) => [v.id, Array(v.states.length).fill(0)]),
-  );
-  let total = 0;
-  function visit(i: number, assignment: Record<string, number>) {
-    if (i < model.variables.length) {
-      const v = model.variables[i];
-      for (let k = 0; k < v.states.length; k++)
-        if (evidence[v.id] === undefined || evidence[v.id] === k)
-          visit(i + 1, { ...assignment, [v.id]: k });
-      return;
-    }
-    let p = 1;
-    for (const c of model.cpts) {
-      let row = 0;
-      for (const id of c.parentIds)
-        row =
-          row * model.variables.find((v) => v.id === id)!.states.length +
-          assignment[id];
-      const r = model.variables.find((v) => v.id === c.variableId)!.states
-        .length;
-      p *= c.values[row * r + assignment[c.variableId]];
-    }
-    total += p;
-    for (const v of model.variables) marginals[v.id][assignment[v.id]] += p;
-  }
-  visit(0, {});
-  if (total === 0) throw new Error("Impossible evidence");
-  for (const v of Object.values(marginals))
-    v.forEach((p, i) => (v[i] = p / total));
-  return marginals;
-}
+import { enumerate } from "./enumerate";
+
 for (const [i, c] of reference.cases.entries())
   test(`pgmpy + exhaustive enumeration: unequal parent cardinalities, case ${i}`, async () => {
     const model = reference.model;
@@ -154,3 +120,22 @@ test("single root, fork and disconnected component marginals", async () => {
       );
   }
 });
+
+for (const [index, c] of reference.cases.entries())
+  test(`all joint cells agree with pgmpy: case ${index}`, async () => {
+    const groups = c.joints.map((g, i) => ({
+      id: String(i),
+      targetIds: g.targetIds,
+    }));
+    const result = await infer(
+      reference.model,
+      c.evidence as Record<string, number>,
+      reference.model.variables.map((v) => v.id),
+      () => createInProcessBN(),
+      groups,
+    );
+    for (const [i, g] of c.joints.entries())
+      g.expected.forEach((expected, k) =>
+        expect(result.groups[String(i)].posterior[k]).toBeCloseTo(expected, 10),
+      );
+  });

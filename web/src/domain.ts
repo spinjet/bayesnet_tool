@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ModelError } from "./engine";
+import { validateProject as validateV1 } from "./legacy-v1";
 export const LIMITS = {
   fileBytes: 100 * 1024 * 1024,
   states: 64,
@@ -15,6 +16,12 @@ export const variableSchema = z.object({
   columnId: z.string(),
   representation: z.enum(["categorical", "finiteNumeric", "discretised"]),
   states: z.array(z.string()).min(2).max(LIMITS.states),
+  stateLabels: z
+    .array(z.string().trim().min(1).max(200))
+    .min(2)
+    .max(LIMITS.states),
+  displayDecimals: z.number().int().min(0).max(12),
+  parameterMode: z.enum(["learned", "uniform"]),
   binning: z
     .object({
       method: z.enum(["manual", "equalWidth", "quantile"]),
@@ -34,13 +41,19 @@ export const cptSchema = z.object({
   counts: z.array(z.number().int().nonnegative()).max(LIMITS.cptCells),
   rowCounts: z.array(z.number().int().nonnegative()),
   signature: z.string(),
-  origin: z.enum(["mle", "dirichlet"]),
+  origin: z.enum(["mle", "dirichlet", "uniform"]),
   alphaPerCell: finite.nonnegative(),
   datasetHash: z.string(),
   trainedAt: z.string(),
 });
+export const queryGroupSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(100),
+  targetIds: z.array(z.string()).max(100),
+});
+export type QueryGroup = z.infer<typeof queryGroupSchema>;
 export const projectSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: z.string(),
   name: z.string().min(1).max(200),
   variables: z.array(variableSchema).max(100),
@@ -49,7 +62,7 @@ export const projectSchema = z.object({
     .max(1000),
   cpts: z.array(cptSchema).max(100),
   evidence: z.record(z.string(), z.number().int().nonnegative()),
-  targetIds: z.array(z.string()),
+  queryGroups: z.array(queryGroupSchema).max(100),
   dataset: z
     .object({
       name: z.string(),
@@ -86,14 +99,14 @@ export const datasetSchema = z.object({
 export type Dataset = z.infer<typeof datasetSchema>;
 export function emptyProject(): Project {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: crypto.randomUUID(),
     name: "Untitled network",
     variables: [],
     edges: [],
     cpts: [],
     evidence: {},
-    targetIds: [],
+    queryGroups: [],
     missingTokens: [""],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -110,6 +123,7 @@ export function signature(p: Project, id: string) {
     id,
     p.variables.find((v) => v.id === id)?.states,
     parents(p, id).map((x) => [x, p.variables.find((v) => v.id === x)?.states]),
+    p.variables.find((v) => v.id === id)?.parameterMode,
   ]);
 }
 export function cyclicNodes(p: Project): string[] {
@@ -164,12 +178,69 @@ export function cptSize(p: Project, id: string) {
   }
   return n;
 }
+export function defaultStateLabels(states: string[]): string[] {
+  const seen = new Set<string>();
+  return states.map((state, i) => {
+    const base = state.trim().slice(0, 200) || `State ${i + 1}`;
+    let label = base,
+      n = 2;
+    while (seen.has(label)) {
+      const suffix = ` (${n++})`;
+      label = base.slice(0, 200 - suffix.length) + suffix;
+    }
+    seen.add(label);
+    return label;
+  });
+}
 export function validateProject(input: unknown): Project {
+  if (
+    input &&
+    typeof input === "object" &&
+    "schemaVersion" in input &&
+    input.schemaVersion === 1
+  ) {
+    const old = validateV1(input);
+    const migrated: Project = {
+      ...old,
+      schemaVersion: 2,
+      variables: old.variables.map((v) => ({
+        ...v,
+        stateLabels: defaultStateLabels(v.states),
+        displayDecimals: 2,
+        parameterMode: "learned",
+      })),
+      queryGroups: old.targetIds.map((id) => ({
+        id: crypto.randomUUID(),
+        name:
+          old.variables
+            .find((v) => v.id === id)!
+            .label.trim()
+            .slice(0, 100) || "Query",
+        targetIds: [id],
+      })),
+    };
+    for (const c of migrated.cpts)
+      c.signature = signature(migrated, c.variableId);
+    return validateProject(migrated);
+  }
   const p = projectSchema.parse(input),
     ids = new Set(p.variables.map((v) => v.id));
   if (ids.size !== p.variables.length)
     throw new Error("Duplicate variable IDs.");
+  if (new Set(p.queryGroups.map((g) => g.id)).size !== p.queryGroups.length)
+    throw new Error("Duplicate query group IDs.");
+  for (const g of p.queryGroups)
+    if (
+      new Set(g.targetIds).size !== g.targetIds.length ||
+      g.targetIds.some((id) => !ids.has(id))
+    )
+      throw new Error("Invalid query group targets.");
   for (const v of p.variables) {
+    if (
+      v.stateLabels.length !== v.states.length ||
+      new Set(v.stateLabels).size !== v.stateLabels.length
+    )
+      throw new Error("State display names must be nonblank and unique.");
     if (
       v.representation === "finiteNumeric" &&
       v.states.some(
@@ -226,6 +297,7 @@ export function validateProject(input: unknown): Project {
     const v = p.variables.find((v) => v.id === c.variableId);
     if (
       !v ||
+      (v.parameterMode === "uniform") !== (c.origin === "uniform") ||
       cpts.has(c.variableId) ||
       c.signature !== signature(p, c.variableId) ||
       JSON.stringify(c.parentIds) !==
@@ -239,6 +311,11 @@ export function validateProject(input: unknown): Project {
     for (let i = 0; i < c.values.length; i += v.states.length) {
       const row = c.values.slice(i, i + v.states.length);
       if (
+        c.origin === "uniform" &&
+        row.some((x) => Math.abs(x - 1 / v.states.length) > 1e-12)
+      )
+        throw new Error("Uniform CPT rows must have equal probabilities.");
+      if (
         row.some((x) => x < 0 || x > 1) ||
         Math.abs(row.reduce((a, b) => a + b, 0) - 1) > 1e-9
       )
@@ -251,11 +328,7 @@ export function validateProject(input: unknown): Project {
       state >= p.variables.find((v) => v.id === id)!.states.length
     )
       throw new Error("Unknown evidence state.");
-  if (
-    p.targetIds.some((id) => !ids.has(id)) ||
-    new Set(p.targetIds).size !== p.targetIds.length
-  )
-    throw new Error("Invalid query targets.");
+
   return p;
 }
 export function inferenceReady(p: Project) {
@@ -281,4 +354,17 @@ export function invalidate(p: Project) {
       c.signature === signature(p, c.variableId) &&
       p.variables.some((v) => v.id === c.variableId),
   );
+}
+
+export function stateLabel(v: Variable, index: number): string {
+  if (v.representation !== "discretised") return v.stateLabels[index];
+  const cuts = v.binning!.cuts,
+    n = v.displayDecimals;
+  const format = (x: number) => x.toFixed(n);
+  return `${index === 0 ? "(−∞" : `[${format(cuts[index - 1])}`}, ${index === cuts.length ? "+∞" : format(cuts[index])})`;
+}
+export function precisionWarning(v: Variable): boolean {
+  if (!v.binning) return false;
+  const labels = v.binning.cuts.map((x) => x.toFixed(v.displayDecimals));
+  return new Set(labels).size < labels.length;
 }

@@ -1,5 +1,6 @@
 """Development only: export pgmpy reference distributions for explicit CPTs."""
 import json
+from itertools import product
 from pathlib import Path
 import pgmpy, numpy, pandas
 from pgmpy.models import DiscreteBayesianNetwork
@@ -22,6 +23,17 @@ for evidence in [{},{'A':1},{'C':2},{'A':0,'C':1}]:
         if v['id'] in evidence:
             expected[v['id']]=[float(i==evidence[v['id']]) for i in range(len(v['states']))]
         else: expected[v['id']]=infer.query([v['id']],evidence=evidence,show_progress=False).values.tolist()
-    cases.append({'evidence':evidence,'expected':expected})
+    joints=[]
+    for targets in [['C'], ['A','C'], ['C','B'], ['C','A','B']]:
+        free=[name for name in targets if name not in evidence]
+        phi=infer.query(free,evidence=evidence,show_progress=False) if free else None
+        values=[]
+        for states in product(*[range(next(len(v['states']) for v in variables if v['id']==name)) for name in targets]):
+            assignment=dict(zip(targets,states))
+            if any(name in evidence and evidence[name]!=state for name,state in assignment.items()): values.append(0.0)
+            elif phi is None: values.append(1.0)
+            else: values.append(float(phi.get_value(**{name:assignment[name] for name in free})))
+        joints.append({'targetIds':targets,'expected':values})
+    cases.append({'evidence':evidence,'expected':expected,'joints':joints})
 out={'reference':{'commit':'a196531fdf3dbce9d53088ea2e07a230953caf6f','pgmpy':pgmpy.__version__,'numpy':numpy.__version__,'pandas':pandas.__version__},'model':{'variables':variables,'cpts':cpts},'cases':cases}
 Path('fixtures/reference.json').write_text(json.dumps(out,indent=2)+'\n')
