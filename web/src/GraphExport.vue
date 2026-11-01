@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import type { GraphDirection } from "./graph-export";
 import { useProject } from "./store";
 import { download, downloadBytes, svgToPng } from "./files";
 const st = useProject(),
   format = ref("svg"),
+  direction = ref<GraphDirection>("auto"),
   probabilities = ref(false);
 watch(
   () => st.current,
@@ -13,7 +15,7 @@ watch(
 );
 async function run() {
   const snapshot = JSON.stringify(st.project);
-  const r = await st.exportGraph(probabilities.value);
+  const r = await st.exportGraph(probabilities.value, direction.value);
   if (!r) return;
   try {
     if (snapshot !== JSON.stringify(st.project))
@@ -40,6 +42,17 @@ async function run() {
           <option value="svg">SVG</option>
           <option value="png">PNG</option>
         </select></label
+      ><label class="field"
+        >Layout direction<select
+          aria-label="Layout direction"
+          v-model="direction"
+        >
+          <option value="auto">Auto (connection sides)</option>
+          <option value="TB">Top to bottom</option>
+          <option value="BT">Bottom to top</option>
+          <option value="LR">Left to right</option>
+          <option value="RL">Right to left</option>
+        </select></label
       ><label class="check"
         ><input
           type="checkbox"
@@ -55,7 +68,10 @@ async function run() {
         "
       >
         Download network image</button
-      ><small>Graphviz hierarchical layout</small>
+      ><small
+        >Graphviz hierarchy. Auto follows the predominant connection sides;
+        choose a direction for mixed layouts.</small
+      >
     </div>
   </details>
 </template>

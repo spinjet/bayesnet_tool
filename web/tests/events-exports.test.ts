@@ -11,7 +11,8 @@ import {
 import { parseCsv, configureVariable, train, encode } from "../src/processing";
 import { nextUp, nextDown } from "../src/numbers";
 import { sampleArchive } from "../src/sampling";
-import { graphSvg, graphDot } from "../src/graph-export";
+import { instance } from "@viz-js/viz";
+import { graphSvg, graphDot, graphDirection } from "../src/graph-export";
 import Papa from "papaparse";
 import { unzipSync, strFromU8 } from "fflate";
 async function setup() {
@@ -281,4 +282,109 @@ test("numeric samples satisfy all inclusive and strict threshold predicates", as
       ).toBe(true);
     }
   }
+});
+
+test.each([
+  ["bottom", "top", "TB"],
+  ["top", "bottom", "BT"],
+  ["right", "left", "LR"],
+  ["left", "right", "RL"],
+] as const)(
+  "export hierarchy follows %s → %s connections (%s)",
+  async (sourceHandle, targetHandle, direction) => {
+    const { p } = await setup();
+    p.edges[0] = { ...p.edges[0], sourceHandle, targetHandle };
+    expect(graphDirection(p)).toBe(direction);
+    const viz = await instance();
+    const rendered = viz.renderJSON(graphDot(p)) as {
+      objects: { name: string; pos: string }[];
+    };
+    const point = (name: string) =>
+      rendered.objects
+        .find((n) => n.name === name)!
+        .pos.split(",")
+        .map(Number);
+    const [ax, ay] = point("n0"),
+      [bx, by] = point("n1");
+    if (direction === "TB") expect(ay).toBeGreaterThan(by);
+    if (direction === "BT") expect(ay).toBeLessThan(by);
+    if (direction === "LR") expect(ax).toBeLessThan(bx);
+    if (direction === "RL") expect(ax).toBeGreaterThan(bx);
+  },
+);
+test("automatic direction is stable for mixed and legacy sides; explicit overrides take precedence", async () => {
+  const { p } = await setup();
+  p.edges[0].sourceHandle = undefined;
+  p.edges[0].targetHandle = undefined;
+  expect(graphDirection(p)).toBe("LR");
+  p.edges[0].sourceHandle = "bottom";
+  p.edges[0].targetHandle = "left";
+  expect(graphDirection(p)).toBe("TB");
+  expect(graphDirection(p, "RL")).toBe("RL");
+  expect(graphDot(p, undefined, "BT")).toContain("rankdir=BT");
+  p.edges = [];
+  expect(graphDirection(p)).toBe("LR");
+});
+test("engineering fork/join export places roots, outcomes and range in successive vertical ranks without modifying the project", async () => {
+  const { p } = await setup();
+  const labels = [
+    "AR",
+    "Skin Root Thickness [mm]",
+    "buckling_valid",
+    "max_stress_valid",
+    "CD",
+    "Wing Mass (SLOT) [kg]",
+    "Range [nmi]",
+  ];
+  p.variables = labels.map((label, i) => ({
+    ...p.variables[0],
+    id: `v${i}`,
+    columnId: `c${i}`,
+    label,
+  }));
+  p.dataset!.headers = labels;
+  p.cpts = [];
+  p.queryGroups = [];
+  p.edges = [
+    [0, 2],
+    [0, 3],
+    [0, 4],
+    [0, 5],
+    [1, 2],
+    [1, 3],
+    [1, 4],
+    [1, 5],
+    [4, 6],
+    [5, 6],
+  ].map(([source, target], i) => ({
+    id: `edge${i}`,
+    source: `v${source}`,
+    target: `v${target}`,
+    sourceHandle: "bottom",
+    targetHandle: "top",
+  }));
+  const original = JSON.stringify(p),
+    viz = await instance();
+  const probabilities = Object.fromEntries(
+    p.variables.map((v) => [v.id, v.states.map(() => 1 / v.states.length)]),
+  );
+  for (const posterior of [undefined, probabilities]) {
+    const rendered = viz.renderJSON(graphDot(p, posterior)) as {
+      objects: { name: string; pos: string }[];
+    };
+    const y = (i: number) =>
+      Number(
+        rendered.objects.find((n) => n.name === `n${i}`)!.pos.split(",")[1],
+      );
+    expect(y(0)).toBe(y(1));
+    for (const i of [2, 3, 4, 5]) {
+      expect(y(0)).toBeGreaterThan(y(i));
+      expect(y(i)).toBe(y(2));
+    }
+    expect(y(4)).toBeGreaterThan(y(6));
+    const svg = await graphSvg(p, posterior);
+    expect(svg).toContain("Range [nmi]");
+    expect(svg).toContain("Skin Root Thickness [mm]");
+  }
+  expect(JSON.stringify(p)).toBe(original);
 });

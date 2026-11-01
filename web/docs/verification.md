@@ -5,8 +5,8 @@ Validated in the managed Linux environment on 1 November 2026. This report cover
 ## Current results
 
 - Clean `npm ci`, TypeScript checks, formatting and production builds pass.
-- **39 unit/numerical tests pass**, covering the original mathematical checks plus state aliases, display precision, uniform CPTs, project migration, query budgets and true joint distributions.
-- **15 Chromium browser scenarios pass at `/` and the same 15 pass under `/bayesnet/`**.
+- **45 unit/numerical tests pass**, covering the original mathematical checks plus state aliases, display precision, uniform CPTs, project migration, query budgets and true joint distributions.
+- **17 Chromium browser scenarios pass at `/` and the same 17 pass under `/bayesnet/`**.
 - Browser: Chromium 154.0.8037.57 on Linux. No browser-computed probability placeholders are used.
 
 ## Numerical evidence
@@ -61,3 +61,7 @@ Serve the production build using `npm run preview`, then run `npm run test:e2e`.
 The added tests check exact multi-state conditioning on multiple variables against explicit joint-cell enumeration, tautological events, deterministic impossible events and recovery, and no indicator leakage into saved/displayed models. Threshold tests cover all four comparison operators, split-bin draft saves, next-representable boundaries and finite numeric states.
 
 Seeded sampling checks joint forbidden cells, empirical frequency, reproducibility, numeric bounds/bin membership, exact finite numeric values, display labels, CSV text escaping, provenance and allocation guards. Real Graphviz output checks escaped labels, four-side ports and probability annotations. Browser tests exercise rebin/retrain, shared subsets, SVG and PNG signatures, ZIP contents, presentation persistence and same-origin-only asset requests. Graphviz is lazy loaded into the existing worker; its embedded WASM requires no custom compilation. SVG is capped at 10 MiB, PNG at 20 million pixels and 16,000 pixels per dimension.
+
+## Hierarchical image layout
+
+Auto export orientation follows connection-side votes; missing legacy sides remain right → left, and mixed ties prefer a vertical hierarchy. Explicit direction controls are validated at the worker boundary. Layout tests inspect actual Graphviz node coordinates in all four directions and the seven-node engineering fork/join shape (two roots, four outcomes, range). Roots and outcomes share their respective ranks, range follows its parents, and probability annotations preserve hierarchy and model state. Browser checks exercise Auto top-down output and an explicit reverse-direction export, as well as PNG, cancellation and existing connection deletion. Angled routes are used because Graphviz orthogonal routing with fixed compass ports can cross node interiors.

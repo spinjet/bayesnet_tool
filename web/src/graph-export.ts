@@ -1,15 +1,47 @@
 import { instance } from "@viz-js/viz";
 import { stateLabel, evidenceLabel, type Project } from "./domain";
+export type GraphDirection = "auto" | "TB" | "BT" | "LR" | "RL";
+/** Graphviz has one hierarchy axis; mixed sides vote for its dominant flow. */
+export function graphDirection(
+  p: Project,
+  requested: GraphDirection = "auto",
+): Exclude<GraphDirection, "auto"> {
+  if (requested !== "auto") return requested;
+  if (!p.edges.length) return "LR";
+  const votes = { TB: 0, BT: 0, LR: 0, RL: 0 };
+  const outgoing = {
+    bottom: "TB",
+    top: "BT",
+    right: "LR",
+    left: "RL",
+  } as const;
+  const incoming = {
+    top: "TB",
+    bottom: "BT",
+    left: "LR",
+    right: "RL",
+  } as const;
+  for (const e of p.edges) {
+    votes[outgoing[e.sourceHandle || "right"]]++;
+    votes[incoming[e.targetHandle || "left"]]++;
+  }
+  // A stable vertical-first tie break honours top/bottom connections in mixed drafts.
+  return (["TB", "BT", "LR", "RL"] as const).reduce(
+    (best, direction) => (votes[direction] > votes[best] ? direction : best),
+    "TB",
+  );
+}
 let renderer: ReturnType<typeof instance> | undefined;
 export function graphDot(
   p: Project,
   posterior?: Record<string, number[]>,
+  direction: GraphDirection = "auto",
 ): string {
   const port = { left: "w", right: "e", top: "n", bottom: "s" };
   const ids = new Map(p.variables.map((v, i) => [v.id, `n${i}`]));
   const lines = [
     "digraph PDOPT_BN {",
-    'graph [rankdir=LR, bgcolor="white", pad="0.25", nodesep="0.45", ranksep="0.8"];',
+    `graph [rankdir=${graphDirection(p, direction)}, splines=polyline, outputorder=edgesfirst, bgcolor="white", pad="0.25", nodesep="0.65", ranksep="1.0"];`,
     'node [shape=box, style="rounded,filled", fillcolor="#edf5f3", color="#487e79", fontname="Arial", fontsize=11];',
     'edge [color="#617985", arrowsize=0.75];',
   ];
@@ -42,11 +74,12 @@ export function graphDot(
 export async function graphSvg(
   p: Project,
   posterior?: Record<string, number[]>,
+  direction: GraphDirection = "auto",
 ) {
   if (!p.variables.length)
     throw new Error("Add variables before exporting a network image.");
   const viz = await (renderer ??= instance());
-  let svg = viz.renderString(graphDot(p, posterior), {
+  let svg = viz.renderString(graphDot(p, posterior, direction), {
     format: "svg",
     engine: "dot",
   });

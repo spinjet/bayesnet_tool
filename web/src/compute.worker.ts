@@ -54,10 +54,13 @@ self.onmessage = async ({ data }) => {
         const opts = z
           .object({
             posterior: z.record(z.string(), z.array(z.number())).optional(),
+            direction: z.enum(["auto", "TB", "BT", "LR", "RL"]).default("auto"),
           })
           .parse(p.options);
         const { graphSvg } = await import("./graph-export");
-        result = { svg: await graphSvg(project, opts.posterior) };
+        result = {
+          svg: await graphSvg(project, opts.posterior, opts.direction),
+        };
       } else if (request.op === "sample") {
         const opts = z
           .object({

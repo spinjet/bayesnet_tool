@@ -508,7 +508,10 @@ export const useProject = defineStore("project", () => {
     }
   }
 
-  async function exportGraph(withProbabilities: boolean) {
+  async function exportGraph(
+    withProbabilities: boolean,
+    direction: import("./graph-export").GraphDirection = "auto",
+  ) {
     if (withProbabilities && !current.value) {
       error.value =
         "Run inference for current probabilities before exporting them.";
@@ -520,6 +523,7 @@ export const useProject = defineStore("project", () => {
         project: project.value,
         options: {
           posterior: withProbabilities ? results.value!.posterior : undefined,
+          direction,
         },
       },
       (x) => z.object({ svg: z.string() }).parse(x),

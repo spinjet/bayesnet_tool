@@ -309,3 +309,49 @@ test("selected connections can be deleted visibly and with the keyboard, and del
   expect(saved.edges).toEqual([]);
   expect(saved.variables).toHaveLength(3);
 });
+
+test("export uses vertical hierarchy for bottom/top connections and offers direction overrides", async ({
+  page,
+}) => {
+  await init(page);
+  await page.getByText("Connections · keyboard controls").click();
+  const controls = page.locator(".connection-controls");
+  await controls
+    .getByRole("combobox", { name: "From", exact: true })
+    .selectOption({ label: "Temperature" });
+  await controls
+    .getByRole("combobox", { name: "To", exact: true })
+    .selectOption({ label: "Output" });
+  await controls
+    .getByRole("combobox", { name: "From side", exact: true })
+    .selectOption("bottom");
+  await controls
+    .getByRole("combobox", { name: "To side", exact: true })
+    .selectOption("top");
+  await controls.getByRole("button", { name: "Connect", exact: true }).click();
+  await page.getByText("Export network image", { exact: true }).click();
+  const direction = page.getByRole("combobox", {
+    name: "Layout direction",
+    exact: true,
+  });
+  await expect(direction).toHaveValue("auto");
+  for (const flow of ["auto", "BT"]) {
+    await direction.selectOption(flow);
+    const download = page.waitForEvent("download");
+    await page
+      .getByRole("button", { name: "Download network image", exact: true })
+      .click();
+    const svg = await readFile((await (await download).path())!, "utf8");
+    const positions = await page.evaluate((text) => {
+      const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+      return Array.from(doc.querySelectorAll("g.node")).map((g) => ({
+        id: g.querySelector("title")!.textContent,
+        y: Number(g.querySelector("text")!.getAttribute("y")),
+      }));
+    }, svg);
+    const parent = positions.find((n) => n.id === "n0")!.y,
+      child = positions.find((n) => n.id === "n1")!.y;
+    if (flow === "auto") expect(parent).toBeLessThan(child);
+    else expect(parent).toBeGreaterThan(child);
+  }
+});
