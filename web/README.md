@@ -80,7 +80,7 @@ Expand **Multiple states / numeric threshold** in Shared evidence to select seve
 
 Set-valued evidence is computed exactly through disposable deterministic indicator leaves inside the inference worker. These leaves never appear in the model, saved file or images. Unresolved predicates can be saved as drafts. Impossible evidence preserves previous results as outdated.
 
-Each Build node has four connection handles. Drag from any side of a parent to any side of a child. Keyboard connection controls also select From/To sides. Side choices are saved as presentation only.
+Each Build node has four connection handles. Drag from any side of a parent to any side of a child. Keyboard connection controls also select From/To sides. Side choices are saved as presentation only. Click an edge in Build, then use **Delete selected connection** or press Delete/Backspace to remove it. The Connections section also lists individual Remove buttons. Removing an edge invalidates affected CPTs and query results.
 
 **Export network image** downloads Graphviz hierarchical SVG or PNG, optionally including current all-node probabilities. It exports the structure, independently of the canvas positions. Probability export requires current inference results. Graphviz runs locally in a cancellable worker; PNG rasterisation uses the browser canvas. Large PNGs are blocked with an SVG alternative.
 

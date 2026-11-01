@@ -19,6 +19,8 @@ import {
 const st = useProject(),
   flow = useVueFlow({ id: "build" });
 const stateNames = ref<string[]>([]);
+const selectedEdge = ref(""),
+  graphCanvas = ref<HTMLDivElement>();
 const csvInput = ref<HTMLInputElement>(),
   attachInput = ref<HTMLInputElement>();
 const delimiter = ref("");
@@ -72,6 +74,7 @@ const nodes = computed(() =>
 const edges = computed(() =>
   st.project.edges.map((e) => ({
     ...e,
+    selected: selectedEdge.value === e.id,
     sourceHandle: e.sourceHandle || "right",
     targetHandle: e.targetHandle || "left",
     style: {
@@ -97,6 +100,7 @@ watch(
   { immediate: true, deep: true },
 );
 function inspect(id: string) {
+  selectedEdge.value = "";
   st.selected = id;
   const v = selected.value;
   if (v) {
@@ -157,7 +161,18 @@ function connect(c: Connection) {
       (c.targetHandle || "left") as Side,
     );
 }
+function deleteEdgeKey(event: KeyboardEvent) {
+  if (!selectedEdge.value || !["Delete", "Backspace"].includes(event.key))
+    return;
+  const target = event.target as HTMLElement;
+  if (target.closest("input, textarea, select, button, [contenteditable=true]"))
+    return;
+  event.preventDefault();
+  dropEdge(selectedEdge.value);
+}
 function dropEdge(id: string) {
+  if (!st.project.edges.some((e) => e.id === id)) return;
+  selectedEdge.value = "";
   st.project.edges = st.project.edges.filter((e) => e.id !== id);
   st.touch();
 }
@@ -334,6 +349,13 @@ function parentAssignment(
             <h1>Build your network</h1>
           </div>
           <div class="canvas-tools">
+            <button
+              class="danger"
+              :disabled="!st.project.edges.some((e) => e.id === selectedEdge)"
+              @click="dropEdge(selectedEdge)"
+            >
+              Delete selected connection
+            </button>
             <button @click="flow.fitView({ padding: 0.25 })">Fit view</button
             ><button
               @click="st.layout()"
@@ -352,7 +374,18 @@ function parentAssignment(
               .join(", ")
           }}. Remove a connection before training or inference.
         </div>
-        <div class="graph-wrap">
+        <p class="tiny muted">
+          Click a connection to select it, then delete it using the button above
+          or Delete / Backspace. All connections can also be removed in
+          Connections below.
+        </p>
+        <div
+          class="graph-wrap"
+          ref="graphCanvas"
+          tabindex="0"
+          aria-label="Editable network canvas"
+          @keydown="deleteEdgeKey"
+        >
           <VueFlow
             :connection-mode="ConnectionMode.Loose"
             id="build"
@@ -363,6 +396,13 @@ function parentAssignment(
             :default-viewport="{ x: 40, y: 40, zoom: 1 }"
             :delete-key-code="null"
             @connect="connect"
+            @edge-click="
+              (e) => {
+                selectedEdge = e.edge.id;
+                graphCanvas?.focus({ preventScroll: true });
+              }
+            "
+            @pane-click="selectedEdge = ''"
             @node-click="(e) => inspect(e.node.id)"
             @node-drag-stop="
               (e) => {

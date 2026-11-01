@@ -273,3 +273,39 @@ for (const operation of ["graph", "sample"] as const)
       operation === "graph" ? "pdopt-bn-network.svg" : "pdopt-bn-samples.zip",
     );
   });
+
+test("selected connections can be deleted visibly and with the keyboard, and deletion persists", async ({
+  page,
+}) => {
+  page.on("dialog", (d) => d.accept());
+  await page.goto(base);
+  await page.getByRole("button", { name: "Load engineering example" }).click();
+  await expect(page.getByRole("status")).toContainText("Example ready");
+  const edges = page.locator("#build-panel .vue-flow__edge");
+  await expect(edges).toHaveCount(2);
+  const remove = page.getByRole("button", {
+    name: "Delete selected connection",
+    exact: true,
+  });
+  await expect(remove).toBeDisabled();
+  await edges
+    .first()
+    .locator(".vue-flow__edge-interaction")
+    .click({ force: true });
+  await expect(remove).toBeEnabled();
+  await remove.click();
+  await expect(edges).toHaveCount(1);
+  await edges
+    .first()
+    .locator(".vue-flow__edge-interaction")
+    .click({ force: true });
+  await page.keyboard.press("Delete");
+  await expect(edges).toHaveCount(0);
+  const save = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save project", exact: true }).click();
+  const saved = JSON.parse(
+    await readFile((await (await save).path())!, "utf8"),
+  );
+  expect(saved.edges).toEqual([]);
+  expect(saved.variables).toHaveLength(3);
+});
